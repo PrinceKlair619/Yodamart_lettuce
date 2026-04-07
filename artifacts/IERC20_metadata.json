@@ -1,0 +1,75 @@
+{
+	"compiler": {
+		"version": "0.8.34+commit.80d5c536"
+	},
+	"language": "Solidity",
+	"output": {
+		"abi": [
+			{
+				"inputs": [
+					{
+						"internalType": "address",
+						"name": "from",
+						"type": "address"
+					},
+					{
+						"internalType": "address",
+						"name": "to",
+						"type": "address"
+					},
+					{
+						"internalType": "uint256",
+						"name": "amount",
+						"type": "uint256"
+					}
+				],
+				"name": "transferFrom",
+				"outputs": [
+					{
+						"internalType": "bool",
+						"name": "",
+						"type": "bool"
+					}
+				],
+				"stateMutability": "nonpayable",
+				"type": "function"
+			}
+		],
+		"devdoc": {
+			"kind": "dev",
+			"methods": {},
+			"version": 1
+		},
+		"userdoc": {
+			"kind": "user",
+			"methods": {},
+			"version": 1
+		}
+	},
+	"settings": {
+		"compilationTarget": {
+			"contracts/Lettuce_contract.sol": "IERC20"
+		},
+		"evmVersion": "osaka",
+		"libraries": {},
+		"metadata": {
+			"bytecodeHash": "ipfs"
+		},
+		"optimizer": {
+			"enabled": false,
+			"runs": 200
+		},
+		"remappings": []
+	},
+	"sources": {
+		"contracts/Lettuce_contract.sol": {
+			"keccak256": "0x70faa79f80c9c56e203439fe59ca781925fdaad4bd6cb8f48632ceba71b4c32f",
+			"license": "MIT",
+			"urls": [
+				"bzz-raw://6475a989a1f5e9b2bc4d40b0e0ccf9e030d56fbd8c25b441fa9fdc7e3aa94fb0",
+				"dweb:/ipfs/QmemHGfJCofF2bfdTick2YG3RGUQ2yXrcyVGuUi9bBvUwr"
+			]
+		}
+	},
+	"version": 1
+}
