@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-interface IERC20 {
+interface ERC721 {
     function transferFrom(address from, address to, uint amount) external returns (bool);
 }
 
 contract LettuceMarket {
 
-    IERC20 public yodaToken;
+    ERC721 public yodaToken;
 
     uint public nextId;
 
     constructor(address _yodaToken) {
-        yodaToken = IERC20(_yodaToken);
+        yodaToken = ERC721(_yodaToken);
     }
 
     struct Lettuce {
