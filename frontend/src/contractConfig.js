@@ -1,4 +1,4 @@
-export const LETTUCE_MARKET_ADDRESS = "0x2175eDA761474b38d14304Bc37ba8A445799f9f8";
+export const LETTUCE_MARKET_ADDRESS = "0x8490292AB6E6F554b79FD7dAC5BF8F8D9296DFa4";
 
 export const LETTUCE_MARKET_ABI = [
   "function nextId() view returns (uint256)",
