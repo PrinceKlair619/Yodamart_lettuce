@@ -9,35 +9,8 @@ import {
 function App() {
   const [walletAddress, setWalletAddress] = useState("");
   const [status, setStatus] = useState("Not connected");
-  const [products, setProducts] = useState([
-    {
-      id: 0,
-      seller: "0x1234...abcd",
-      pricePerUnit: "15",
-      quantity: "25",
-      category: "Romaine",
-      quality: "Premium",
-    },
-    {
-      id: 1,
-      seller: "0x5678...efgh",
-      pricePerUnit: "10",
-      quantity: "40",
-      category: "Iceberg",
-      quality: "Standard",
-    },
-    {
-      id: 2,
-      seller: "0x9999...aaaa",
-      pricePerUnit: "20",
-      quantity: "12",
-      category: "Green Leaf",
-      quality: "Organic",
-    },
-  ]);
-
-  const [buyAmounts, setBuyAmounts] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [loadingListings, setLoadingListings] = useState(false);
 
   async function connectWallet() {
     if (!window.ethereum) {
@@ -49,6 +22,7 @@ function App() {
       const accounts = await window.ethereum.request({
         method: "eth_requestAccounts",
       });
+
       setWalletAddress(accounts[0]);
       setStatus("Wallet connected");
     } catch (error) {
@@ -58,9 +32,23 @@ function App() {
   }
 
   async function loadListingsFromContract() {
-    if (!window.ethereum) return;
+    if (!window.ethereum) {
+      setStatus("MetaMask not found");
+      return;
+    }
+
+    if (
+      !LETTUCE_MARKET_ADDRESS ||
+      LETTUCE_MARKET_ADDRESS === "0xYourDeployedLettuceMarketAddressHere"
+    ) {
+      setStatus("Add deployed contract address in contractConfig.js");
+      return;
+    }
 
     try {
+      setLoadingListings(true);
+      setStatus("Loading listings from contract...");
+
       const provider = new ethers.BrowserProvider(window.ethereum);
       const contract = new ethers.Contract(
         LETTUCE_MARKET_ADDRESS,
@@ -68,72 +56,46 @@ function App() {
         provider
       );
 
-      const total = await contract.nextId();
-      const loaded = [];
+      const totalListings = await contract.nextId();
+      const loadedListings = [];
 
-      for (let i = 0; i < Number(total); i++) {
+      for (let i = 0; i < Number(totalListings); i++) {
         const item = await contract.getLettuce(i);
 
-        loaded.push({
-          id: Number(item.id),
-          seller: item.seller,
-          pricePerUnit: item.pricePerUnit.toString(),
-          quantity: item.quantity.toString(),
-          category: item.category,
-          quality: item.quality,
-        });
+        const quantity = Number(item.quantity);
+
+        if (quantity > 0) {
+          loadedListings.push({
+            id: Number(item.id),
+            seller: item.seller,
+            pricePerUnit: item.pricePerUnit.toString(),
+            quantity: item.quantity.toString(),
+            category: item.category,
+            quality: item.quality,
+          });
+        }
       }
 
-      setProducts(loaded);
-      setStatus("Loaded listings from contract");
+      setProducts(loadedListings);
+
+      if (loadedListings.length === 0) {
+        setStatus("No listings found on contract");
+      } else {
+        setStatus("Listings loaded from contract");
+      }
     } catch (error) {
       console.error(error);
-      setStatus("Using sample data until contract is deployed");
-    }
-  }
-
-  async function buyLettuce(id) {
-    if (!window.ethereum) {
-      setStatus("MetaMask not found");
-      return;
-    }
-
-    const amount = buyAmounts[id];
-
-    if (!amount || Number(amount) <= 0) {
-      setStatus("Enter a valid amount");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setStatus("Preparing transaction...");
-
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const signer = await provider.getSigner();
-
-      const contract = new ethers.Contract(
-        LETTUCE_MARKET_ADDRESS,
-        LETTUCE_MARKET_ABI,
-        signer
-      );
-
-      const tx = await contract.buyLettuce(id, Number(amount));
-      setStatus("Transaction sent. Waiting for confirmation...");
-      await tx.wait();
-
-      setStatus("Purchase successful");
-      await loadListingsFromContract();
-    } catch (error) {
-      console.error(error);
-      setStatus("Purchase failed");
+      setStatus("Failed to load listings from contract");
+      setProducts([]);
     } finally {
-      setLoading(false);
+      setLoadingListings(false);
     }
   }
 
   useEffect(() => {
-    loadListingsFromContract();
+    if (window.ethereum) {
+      loadListingsFromContract();
+    }
   }, []);
 
   return (
@@ -152,7 +114,17 @@ function App() {
           <button className="connect-btn" onClick={connectWallet}>
             Connect Wallet
           </button>
+
+          <button
+            className="refresh-btn"
+            onClick={loadListingsFromContract}
+            style={{ marginTop: "10px" }}
+          >
+            Refresh Listings
+          </button>
+
           <p className="wallet-status">{status}</p>
+
           {walletAddress && (
             <p className="wallet-address">
               {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
@@ -180,16 +152,15 @@ function App() {
       <section className="products-section">
         <div className="section-header">
           <h2>Available Listings</h2>
-          <button className="refresh-btn" onClick={loadListingsFromContract}>
-            Refresh Listings
-          </button>
         </div>
 
-        <div className="product-grid">
-          {products.length === 0 ? (
-            <p>No lettuce listings found.</p>
-          ) : (
-            products.map((item) => (
+        {loadingListings ? (
+          <p>Loading listings...</p>
+        ) : products.length === 0 ? (
+          <p>No listings to display.</p>
+        ) : (
+          <div className="product-grid">
+            {products.map((item) => (
               <div className="card" key={item.id}>
                 <div className="card-top">
                   <span className="tag">{item.quality}</span>
@@ -211,37 +182,14 @@ function App() {
                   </p>
                 </div>
 
-                <div className="buy-box">
-                  <input
-                    type="number"
-                    min="1"
-                    placeholder="Amount"
-                    value={buyAmounts[item.id] || ""}
-                    onChange={(e) =>
-                      setBuyAmounts({
-                        ...buyAmounts,
-                        [item.id]: e.target.value,
-                      })
-                    }
-                  />
-
-                  <button
-                    className="buy-btn"
-                    onClick={() => buyLettuce(item.id)}
-                    disabled={loading}
-                  >
-                    {loading ? "Processing..." : "Buy"}
-                  </button>
-                </div>
-
                 <p className="deal-note">
                   Bulk orders of 10+ units may receive discounted pricing in the
                   contract.
                 </p>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );
