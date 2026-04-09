@@ -1,6 +1,6 @@
 {
 	"compiler": {
-		"version": "0.8.34+commit.80d5c536"
+		"version": "0.8.19+commit.7dd6d404"
 	},
 	"language": "Solidity",
 	"output": {
@@ -231,7 +231,7 @@
 				"name": "yodaToken",
 				"outputs": [
 					{
-						"internalType": "contract ERC721",
+						"internalType": "contract IERC20",
 						"name": "",
 						"type": "address"
 					}
@@ -255,7 +255,7 @@
 		"compilationTarget": {
 			"contracts/Lettuce_contract.sol": "LettuceMarket"
 		},
-		"evmVersion": "osaka",
+		"evmVersion": "paris",
 		"libraries": {},
 		"metadata": {
 			"bytecodeHash": "ipfs"
@@ -268,11 +268,11 @@
 	},
 	"sources": {
 		"contracts/Lettuce_contract.sol": {
-			"keccak256": "0x8f1ec1bab495f3036e60f61c083c8a30c932ca3d85be09c1075c20d13b9e0228",
+			"keccak256": "0x70faa79f80c9c56e203439fe59ca781925fdaad4bd6cb8f48632ceba71b4c32f",
 			"license": "MIT",
 			"urls": [
-				"bzz-raw://16fd787ee2bddae79d1bbee2e55bd33802f145f016e0c60e6d1ee769a8a36040",
-				"dweb:/ipfs/QmNuhAgvUHAGGhkrDpc1tWUgZk5owsNT5AfiBfHLiWkkCf"
+				"bzz-raw://6475a989a1f5e9b2bc4d40b0e0ccf9e030d56fbd8c25b441fa9fdc7e3aa94fb0",
+				"dweb:/ipfs/QmemHGfJCofF2bfdTick2YG3RGUQ2yXrcyVGuUi9bBvUwr"
 			]
 		}
 	},
