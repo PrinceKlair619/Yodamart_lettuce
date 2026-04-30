@@ -1,0 +1,14 @@
+{
+  "name": "yodamart-lettuce",
+  "version": "1.0.0",
+  "description": "YodaMart Lettuce Marketplace — compile contracts for browser deployment",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "build:contracts": "hardhat compile && node scripts/copyArtifacts.js"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.0"
+  }
+}

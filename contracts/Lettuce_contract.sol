@@ -36,7 +36,8 @@ contract LettuceMarket {
     );
     event PromotionFeeUpdated(uint newFeePerDay);
 
-    uint public promotionFeePerDay = 10 * 1e18;
+    // 10.00 YODA — YODA token has 2 decimals, so 10 * 10**2 = 1000 raw units
+    uint public promotionFeePerDay = 1000;
 
     constructor(address _yodaToken) {
         yodaToken = IERC20(_yodaToken);
