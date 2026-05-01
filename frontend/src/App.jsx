@@ -20,7 +20,6 @@ import {
 const SEPOLIA_CHAIN_ID   = "0xaa36a7"; // 11155111
 const LS_KEY             = "lettuce_market_address";
 
-const QUALITY_EMOJI = { Premium: "🥇", Standard: "🌿", Economy: "🥬" };
 const CATEGORIES    = ["Romaine", "Iceberg", "Butterhead", "Arugula", "Spinach", "Mixed"];
 const QUALITIES     = ["Premium", "Standard", "Economy"];
 
@@ -613,6 +612,8 @@ export default function App() {
 
   // ──────────────────────────────────────────────────────────
   //  Shared sub-components
+  //  Called as functions (not JSX) to avoid React remounting
+  //  inner components on every parent state change.
   // ──────────────────────────────────────────────────────────
   function TxMsg() {
     if (!txStatus.msg) return null;
@@ -665,7 +666,6 @@ export default function App() {
   function DeployPanel() {
     return (
       <div className="deploy-panel">
-        <div className="deploy-panel-icon">🥬</div>
         <h2 className="deploy-panel-title">Set Up Your Marketplace</h2>
         <p className="deploy-panel-sub">
           No LettuceMarket contract is configured yet. Deploy one with MetaMask
@@ -728,7 +728,7 @@ export default function App() {
           onClick={deployMarket}
           disabled={deploying || !walletAddress || !hasBytecode || isWrongNetwork}
         >
-          {deploying ? <><span className="spinner" /> Deploying…</> : "🚀 Deploy LettuceMarket"}
+          {deploying ? <><span className="spinner" /> Deploying…</> : "Deploy LettuceMarket"}
         </button>
 
         <div className="deploy-divider"><span>or paste existing address</span></div>
@@ -773,7 +773,6 @@ export default function App() {
     if (loadingListings) return <div className="loading-state"><div className="loading-spinner-large" /><p>Fetching listings…</p></div>;
     if (availableListings.length === 0) return (
       <div className="empty-state">
-        <span className="empty-icon">🥬</span>
         <h3>No listings yet</h3>
         <p>Be the first to list your lettuce in the Sell tab.</p>
       </div>
@@ -784,30 +783,26 @@ export default function App() {
           <div className="card" key={item.id}>
             <div className="card-header">
               <span className={`quality-badge ${qualityClass(item.quality)}`}>
-                {QUALITY_EMOJI[item.quality] ?? "🥬"} {item.quality}
+                {item.quality}
               </span>
               <span className="id-tag">#{item.id}</span>
             </div>
             <div className="card-body">
-              <div className="card-category-icon">🥬</div>
               <h3 className="card-title">{item.category} Lettuce</h3>
               <div className="card-details">
                 <div className="detail-row">
-                  <span className="detail-icon">💰</span>
                   <div>
                     <span className="detail-label">Price per unit</span>
                     <span className="detail-value price-value">{formatYoda(item.pricePerUnit)} YODA</span>
                   </div>
                 </div>
                 <div className="detail-row">
-                  <span className="detail-icon">📦</span>
                   <div>
                     <span className="detail-label">Available</span>
                     <span className="detail-value">{item.quantity} units</span>
                   </div>
                 </div>
                 <div className="detail-row">
-                  <span className="detail-icon">👤</span>
                   <div>
                     <span className="detail-label">Seller</span>
                     <span className="detail-value address-value">{shortenAddr(item.seller)}</span>
@@ -816,8 +811,8 @@ export default function App() {
               </div>
             </div>
             <div className="card-footer card-footer-buy">
-              <span className="bulk-note"><span className="bulk-icon">⚡</span>Buy 10+ for a 20% bulk discount</span>
-              <BuyAmountRow item={item} />
+              <span className="bulk-note">Buy 10+ for a 20% bulk discount</span>
+              {BuyAmountRow({ item })}
             </div>
           </div>
         ))}
@@ -880,23 +875,20 @@ export default function App() {
                 <div className="card" key={item.id}>
                   <div className="card-header">
                     <span className={`quality-badge ${qualityClass(item.quality)}`}>
-                      {QUALITY_EMOJI[item.quality] ?? "🥬"} {item.quality}
+                      {item.quality}
                     </span>
                     <span className="id-tag">#{item.id}</span>
                   </div>
                   <div className="card-body">
-                    <div className="card-category-icon">🥬</div>
                     <h3 className="card-title">{item.category} Lettuce</h3>
                     <div className="card-details">
                       <div className="detail-row">
-                        <span className="detail-icon">💰</span>
                         <div>
                           <span className="detail-label">Price per unit</span>
                           <span className="detail-value price-value">{formatYoda(item.pricePerUnit)} YODA</span>
                         </div>
                       </div>
                       <div className="detail-row">
-                        <span className="detail-icon">📦</span>
                         <div>
                           <span className="detail-label">Remaining</span>
                           <span className="detail-value">{item.quantity} units</span>
@@ -1003,7 +995,6 @@ export default function App() {
           <div className="loading-state"><div className="loading-spinner-large" /><p>Loading auctions…</p></div>
         ) : auctions.length === 0 ? (
           <div className="empty-state">
-            <span className="empty-icon">🏷️</span>
             <h3>No auctions yet</h3>
             <p>Create the first lettuce auction above.</p>
           </div>
@@ -1016,7 +1007,7 @@ export default function App() {
                 <div className="card auction-card" key={a.id}>
                   <div className="card-header">
                     <span className={`quality-badge ${qualityClass(a.quality)}`}>
-                      {QUALITY_EMOJI[a.quality] ?? "🥬"} {a.quality}
+                      {a.quality}
                     </span>
                     <div className="auction-meta">
                       <span className="id-tag">#{a.id}</span>
@@ -1026,17 +1017,17 @@ export default function App() {
                     </div>
                   </div>
                   <div className="card-body">
-                    <div className="card-category-icon">🥬</div>
                     <h3 className="card-title">{a.category} Lettuce</h3>
                     <div className="card-details">
-                      <div className="detail-row"><span className="detail-icon">📦</span><div><span className="detail-label">Quantity</span><span className="detail-value">{a.quantity} units</span></div></div>
-                      <div className="detail-row"><span className="detail-icon">🏁</span><div><span className="detail-label">Starting bid</span><span className="detail-value price-value">{formatYoda(a.startingBid)} YODA</span></div></div>
-                      <div className="detail-row"><span className="detail-icon">💎</span><div><span className="detail-label">Highest bid</span><span className="detail-value price-value">{BigInt(a.highestBid) > 0n ? formatYoda(a.highestBid) + " YODA" : "No bids yet"}</span></div></div>
+                      <div className="detail-row"><div><span className="detail-label">Quantity</span><span className="detail-value">{a.quantity} units</span></div></div>
+                      <div className="detail-row"><div><span className="detail-label">Starting bid</span><span className="detail-value price-value">{formatYoda(a.startingBid)} YODA</span></div></div>
+                      <div className="detail-row"><div><span className="detail-label">Highest bid</span><span className="detail-value price-value">{BigInt(a.highestBid) > 0n ? formatYoda(a.highestBid) + " YODA" : "No bids yet"}</span></div></div>
                       {a.highestBidder !== ethers.ZeroAddress && (
-                        <div className="detail-row"><span className="detail-icon">👑</span><div><span className="detail-label">Highest bidder</span><span className="detail-value address-value">{shortenAddr(a.highestBidder)}</span></div></div>
+                        <div className="detail-row"><div><span className="detail-label">Highest bidder</span><span className="detail-value address-value">{shortenAddr(a.highestBidder)}</span></div>
+                        </div>
                       )}
-                      <div className="detail-row"><span className="detail-icon">⏰</span><div><span className="detail-label">Ends</span><span className="detail-value">{formatDate(a.endTime)}</span></div></div>
-                      <div className="detail-row"><span className="detail-icon">👤</span><div><span className="detail-label">Seller</span><span className="detail-value address-value">{shortenAddr(a.seller)}</span></div></div>
+                      <div className="detail-row"><div><span className="detail-label">Ends</span><span className="detail-value">{formatDate(a.endTime)}</span></div></div>
+                      <div className="detail-row"><div><span className="detail-label">Seller</span><span className="detail-value address-value">{shortenAddr(a.seller)}</span></div></div>
                     </div>
                   </div>
                   {ended && (
@@ -1063,7 +1054,6 @@ export default function App() {
     return (
       <div className="tab-panels">
         <div className="promo-fee-banner">
-          <span className="promo-fee-icon">📢</span>
           <div>
             <span className="promo-fee-label">Current promotion fee:</span>
             <span className="promo-fee-value">{dailyFeeDisplay} YODA / day</span>
@@ -1119,7 +1109,6 @@ export default function App() {
           <div className="loading-state" style={{ padding: "48px 32px" }}><div className="loading-spinner-large" /><p>Loading promotions…</p></div>
         ) : promotions.length === 0 ? (
           <div className="empty-state" style={{ padding: "48px 32px" }}>
-            <span className="empty-icon">📢</span>
             <h3>No active promotions</h3>
             <p>Promote a listing or auction to boost visibility.</p>
           </div>
@@ -1127,7 +1116,7 @@ export default function App() {
           <div className="promo-list">
             {promotions.map((p, idx) => (
               <div className="promo-item" key={idx}>
-                <div className="promo-type-badge">{p.isAuction ? "🏷️ Auction" : "🥬 Listing"} #{p.listingId}</div>
+                <div className="promo-type-badge">{p.isAuction ? "Auction" : "Listing"} #{p.listingId}</div>
                 <div className="promo-details">
                   <div className="promo-row"><span className="detail-label">Seller</span><span className="detail-value address-value">{shortenAddr(p.seller)}</span></div>
                   <div className="promo-row"><span className="detail-label">Fee paid</span><span className="detail-value price-value">{formatYoda(p.feePaid)} YODA</span></div>
@@ -1156,21 +1145,19 @@ export default function App() {
       {/* ── Navbar ───────────────────────────────────────── */}
       <nav className="navbar">
         <div className="nav-brand">
-          <span className="brand-icon">🥬</span>
           <span className="brand-name">YodaMart</span>
         </div>
 
         <div className="nav-actions">
           {yodaBalance !== null && (
             <div className="yoda-balance-badge">
-              <span className="yoda-icon">🟡</span>
               <span>{yodaBalance} YODA</span>
             </div>
           )}
 
           <button className="theme-toggle" onClick={() => setDarkMode((d) => !d)}
             title="Toggle light / dark mode" aria-label="Toggle theme">
-            {darkMode ? "☀️" : "🌙"}
+            {darkMode ? "Light" : "Dark"}
           </button>
 
           <button className="connect-btn" onClick={connectWallet}>
@@ -1184,7 +1171,7 @@ export default function App() {
       {/* ── Wrong network warning ───────────────────────── */}
       {isWrongNetwork && (
         <div className="network-warning">
-          <span>⚠️ Wrong network — this app runs on Sepolia.</span>
+          <span>Wrong network — this app runs on Sepolia.</span>
           <button className="network-switch-btn" onClick={switchToSepolia}>Switch to Sepolia</button>
         </div>
       )}
@@ -1194,7 +1181,7 @@ export default function App() {
         <div className="hero-content">
           <div className="hero-badge">
             <span className="badge-dot" />
-            Decentralized Marketplace
+            The Future Of Agriculture
           </div>
           <h1 className="hero-title">
             Fresh Lettuce,<br />
@@ -1228,7 +1215,6 @@ export default function App() {
         </div>
         <div className="hero-visual">
           <div className="hero-card-float">
-            <span className="float-icon">🥬</span>
             <div className="float-label">Lettuce Market</div>
             <div className="float-sub">Fresh · Verified · On-Chain</div>
             <span className="float-badge">Live Pricing</span>
@@ -1247,7 +1233,6 @@ export default function App() {
 
       {/* ── About ────────────────────────────────────────── */}
       <section className="about-section">
-        <span className="about-icon">🌱</span>
         <div className="about-content">
           <h2>About YodaMart</h2>
           <p>
@@ -1264,7 +1249,7 @@ export default function App() {
 
         {!marketAddress ? (
           /* ── No contract configured — show deploy panel ── */
-          <DeployPanel />
+          DeployPanel()
         ) : (
           /* ── Contract configured — show full marketplace ─ */
           <>
@@ -1288,14 +1273,14 @@ export default function App() {
               </button>
             </div>
 
-            <TxMsg />
+            {TxMsg()}
 
             <div className="tab-bar">
               {[
-                { key: "buy",        label: "🛒 Buy" },
-                { key: "sell",       label: "🌿 Sell" },
-                { key: "auctions",   label: "🏷️ Auctions" },
-                { key: "promotions", label: "📢 Promotions" },
+                { key: "buy",        label: "Buy" },
+                { key: "sell",       label: "Sell" },
+                { key: "auctions",   label: "Auctions" },
+                { key: "promotions", label: "Promotions" },
               ].map(({ key, label }) => (
                 <button
                   key={key}
@@ -1308,10 +1293,10 @@ export default function App() {
             </div>
 
             <div className="tab-content">
-              {activeTab === "buy"        && <BuyTab />}
-              {activeTab === "sell"       && <SellTab />}
-              {activeTab === "auctions"   && <AuctionsTab />}
-              {activeTab === "promotions" && <PromotionsTab />}
+              {activeTab === "buy"        && BuyTab()}
+              {activeTab === "sell"       && SellTab()}
+              {activeTab === "auctions"   && AuctionsTab()}
+              {activeTab === "promotions" && PromotionsTab()}
             </div>
           </>
         )}
@@ -1320,7 +1305,6 @@ export default function App() {
       {/* ── Footer ───────────────────────────────────────── */}
       <footer className="footer">
         <div className="footer-brand">
-          <span>🥬</span>
           YodaMart — Decentralized Lettuce Marketplace
         </div>
         <div>Powered by Ethereum · Yoda Token · Sepolia</div>
