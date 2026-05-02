@@ -108,6 +108,8 @@ export default function App() {
     setProducts([]);
     setAuctions([]);
     setPromotions([]);
+    setReceipts([]);
+    setHistoryEvents([]);
     setYodaBalance(null);
   }
 
@@ -128,13 +130,20 @@ export default function App() {
   const [auctions,      setAuctions]      = useState([]);
   const [promotions,    setPromotions]    = useState([]);
   const [feePerDay,     setFeePerDay]     = useState(null);
+  const [receipts,      setReceipts]      = useState([]);
+  const [historyEvents, setHistoryEvents] = useState([]);
 
   // ── loading flags ─────────────────────────────────────────
   const [loadingListings,   setLoadingListings]   = useState(false);
   const [loadingAuctions,   setLoadingAuctions]   = useState(false);
   const [loadingPromotions, setLoadingPromotions] = useState(false);
+  const [loadingReceipts,   setLoadingReceipts]   = useState(false);
+  const [loadingHistory,    setLoadingHistory]    = useState(false);
 
-  // ── active tab ────────────────────────────────────────────
+  // ── top-level page (Home / Market / History live in the navbar)
+  const [activePage, setActivePage] = useState("home");
+
+  // ── active marketplace tab ────────────────────────────────
   const [activeTab, setActiveTab] = useState("buy");
 
   // ── marketplace tx status ─────────────────────────────────
@@ -143,6 +152,7 @@ export default function App() {
   // ── deploy status ─────────────────────────────────────────
   const [deployStatus, setDeployStatus] = useState({ type: "", msg: "" });
   const [deploying, setDeploying]       = useState(false);
+  const [copiedMarket, setCopiedMarket] = useState(false);
 
   // ── buy form ──────────────────────────────────────────────
   const [buyAmounts, setBuyAmounts] = useState({});
@@ -156,7 +166,7 @@ export default function App() {
   const [auctionForm, setAuctionForm] = useState({
     quantity: "", startingBid: "", durationDays: "1", category: "Romaine", quality: "Standard",
   });
-  const [bidForm, setBidForm]     = useState({ auctionId: "", bidAmount: "" });
+  const [bidForm, setBidForm]       = useState({ auctionId: "", bidAmount: "" });
   const [withdrawId, setWithdrawId] = useState("");
 
   // ── promote forms ─────────────────────────────────────────
@@ -166,9 +176,9 @@ export default function App() {
   // ──────────────────────────────────────────────────────────
   //  Derived
   // ──────────────────────────────────────────────────────────
-  const isWrongNetwork    = walletAddress && chainId && chainId !== SEPOLIA_CHAIN_ID;
+  const isWrongNetwork = walletAddress && chainId && chainId !== SEPOLIA_CHAIN_ID;
   // True only when build:contracts has run and both ABI + bytecode are populated
-  const hasBytecode       = Boolean(LETTUCE_MARKET_BYTECODE) && DEPLOY_ABI.length > 0;
+  const hasBytecode    = Boolean(LETTUCE_MARKET_BYTECODE) && DEPLOY_ABI.length > 0;
 
   // ──────────────────────────────────────────────────────────
   //  Contract helpers
@@ -213,10 +223,10 @@ export default function App() {
         await window.ethereum.request({
           method: "wallet_addEthereumChain",
           params: [{
-            chainId:         SEPOLIA_CHAIN_ID,
-            chainName:       "Sepolia Testnet",
-            nativeCurrency:  { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
-            rpcUrls:         ["https://rpc.sepolia.org"],
+            chainId:           SEPOLIA_CHAIN_ID,
+            chainName:         "Sepolia Testnet",
+            nativeCurrency:    { name: "Sepolia ETH", symbol: "ETH", decimals: 18 },
+            rpcUrls:           ["https://rpc.sepolia.org"],
             blockExplorerUrls: ["https://sepolia.etherscan.io"],
           }],
         });
@@ -380,11 +390,108 @@ export default function App() {
     finally { setLoadingPromotions(false); }
   }, [marketAddress]);
 
+  const loadReceipts = useCallback(async () => {
+    if (!walletAddress || !window.ethereum || !marketAddress) return;
+    try {
+      setLoadingReceipts(true);
+      const { market } = await getReadonlyContracts();
+      const raw = await market.getReceipts(walletAddress);
+      setReceipts(raw.map((r) => ({
+        purchaseId: Number(r.purchaseId),
+        listingId:  Number(r.listingId),
+        quantity:   Number(r.quantity),
+        totalPaid:  r.totalPaid.toString(),
+        timestamp:  Number(r.timestamp),
+      })));
+    } catch (err) {
+      // Silently handle if contract is old deployment without getReceipts
+      console.warn("loadReceipts (may be old contract):", err);
+      setReceipts([]);
+    } finally {
+      setLoadingReceipts(false);
+    }
+  }, [walletAddress, marketAddress]);
+
+  const loadHistory = useCallback(async () => {
+    if (!window.ethereum || !marketAddress) return;
+    try {
+      setLoadingHistory(true);
+      const { market, provider } = await getReadonlyContracts();
+
+      const [listed, purchased, auctionCreated, bidPlaced, auctionFinalized] = await Promise.all([
+        market.queryFilter("LettuceListed").catch(() => []),
+        market.queryFilter("LettucePurchased").catch(() => []),
+        market.queryFilter("AuctionCreated").catch(() => []),
+        market.queryFilter("BidPlaced").catch(() => []),
+        market.queryFilter("AuctionFinalized").catch(() => []),
+      ]);
+
+      const raw = [
+        ...listed.map((e) => ({
+          type:        "Listed",
+          wallet:      e.args?.seller ?? "",
+          detail:      `${e.args?.quantity} units @ ${formatYoda(e.args?.price ?? 0)} YODA`,
+          blockNumber: e.blockNumber,
+          txHash:      e.transactionHash,
+        })),
+        ...purchased.map((e) => ({
+          type:        "Purchased",
+          wallet:      e.args?.buyer ?? "",
+          detail:      `${e.args?.amount} units`,
+          blockNumber: e.blockNumber,
+          txHash:      e.transactionHash,
+        })),
+        ...auctionCreated.map((e) => ({
+          type:        "Auction Created",
+          wallet:      e.args?.seller ?? "",
+          detail:      `Starting at ${formatYoda(e.args?.startingBid ?? 0)} YODA`,
+          blockNumber: e.blockNumber,
+          txHash:      e.transactionHash,
+        })),
+        ...bidPlaced.map((e) => ({
+          type:        "Bid Placed",
+          wallet:      e.args?.bidder ?? "",
+          detail:      `${formatYoda(e.args?.amount ?? 0)} YODA`,
+          blockNumber: e.blockNumber,
+          txHash:      e.transactionHash,
+        })),
+        ...auctionFinalized.map((e) => ({
+          type:        "Finalized",
+          wallet:      e.args?.winner ?? "",
+          detail:      e.args?.winningBid && BigInt(e.args.winningBid) > 0n
+            ? `${formatYoda(e.args.winningBid)} YODA`
+            : "No winner",
+          blockNumber: e.blockNumber,
+          txHash:      e.transactionHash,
+        })),
+      ];
+
+      raw.sort((a, b) => b.blockNumber - a.blockNumber);
+
+      // Batch-fetch timestamps for unique block numbers
+      const uniqueBlocks = [...new Set(raw.map((e) => e.blockNumber))];
+      const blockData    = await Promise.all(
+        uniqueBlocks.map((n) => provider.getBlock(n).catch(() => null))
+      );
+      const tsMap = {};
+      blockData.forEach((b, i) => { if (b) tsMap[uniqueBlocks[i]] = b.timestamp; });
+
+      setHistoryEvents(raw.map((e) => ({ ...e, timestamp: tsMap[e.blockNumber] ?? null })));
+    } catch (err) {
+      console.error("loadHistory:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [marketAddress]);
+
   const refreshAll = useCallback(async () => {
     setStatus("Refreshing…");
-    await Promise.all([loadListings(), loadAuctions(), loadPromotions(), loadYodaBalance()]);
+    const tasks = [loadListings(), loadAuctions(), loadPromotions(), loadYodaBalance()];
+    if (walletAddress) tasks.push(loadReceipts());
+    if (activePage === "history") tasks.push(loadHistory());
+    await Promise.all(tasks);
     setStatus(walletAddress ? "Wallet connected" : "Loaded");
-  }, [loadListings, loadAuctions, loadPromotions, loadYodaBalance, walletAddress]);
+  }, [loadListings, loadAuctions, loadPromotions, loadYodaBalance, loadReceipts, loadHistory, walletAddress, activePage]);
 
   // ──────────────────────────────────────────────────────────
   //  Effects
@@ -400,15 +507,24 @@ export default function App() {
   useEffect(() => {
     if (walletAddress && marketAddress) {
       loadYodaBalance();
+      loadReceipts();
       setStatus("Wallet connected");
     }
   }, [walletAddress, marketAddress]);
+
+  // Auto-load history when the History page is first opened
+  useEffect(() => {
+    if (activePage === "history" && marketAddress && historyEvents.length === 0 && !loadingHistory) {
+      loadHistory();
+    }
+  }, [activePage, marketAddress]);
 
   useEffect(() => {
     if (!window.ethereum) return;
     const onAccounts = (accounts) => {
       setWalletAddress(accounts[0] || "");
       setYodaBalance(null);
+      setReceipts([]);
     };
     const onChain = (cid) => {
       setChainId(cid);
@@ -447,7 +563,7 @@ export default function App() {
       await tx.wait();
       setTxStatus({ type: "success", msg: `Bought ${amt} unit(s) for ${formatYoda(total)} YODA!` });
       setBuyAmounts((p) => ({ ...p, [item.id]: "" }));
-      await Promise.all([loadListings(), loadYodaBalance()]);
+      await Promise.all([loadListings(), loadYodaBalance(), loadReceipts()]);
     } catch (err) {
       console.error(err);
       setTxStatus({ type: "error", msg: parseError(err) });
@@ -672,7 +788,6 @@ export default function App() {
           or paste an existing address to get started.
         </p>
 
-        {/* Step indicators */}
         <div className="deploy-steps">
           <div className={`deploy-step ${walletAddress ? "step-done" : "step-pending"}`}>
             <span className="step-num">{walletAddress ? "✓" : "1"}</span>
@@ -680,9 +795,7 @@ export default function App() {
               {walletAddress ? `Connected: ${shortenAddr(walletAddress)}` : "Connect Wallet"}
             </span>
             {!walletAddress && (
-              <button className="action-btn action-btn-sm" onClick={connectWallet}>
-                Connect
-              </button>
+              <button className="action-btn action-btn-sm" onClick={connectWallet}>Connect</button>
             )}
           </div>
 
@@ -693,28 +806,21 @@ export default function App() {
               {walletAddress && chainId === SEPOLIA_CHAIN_ID ? "✓" : "2"}
             </span>
             <span className="step-label">
-              {walletAddress && chainId === SEPOLIA_CHAIN_ID
-                ? "On Sepolia"
-                : "Switch to Sepolia"}
+              {walletAddress && chainId === SEPOLIA_CHAIN_ID ? "On Sepolia" : "Switch to Sepolia"}
             </span>
             {walletAddress && chainId !== SEPOLIA_CHAIN_ID && (
-              <button className="network-switch-btn" onClick={switchToSepolia}>
-                Switch
-              </button>
+              <button className="network-switch-btn" onClick={switchToSepolia}>Switch</button>
             )}
           </div>
 
           <div className={`deploy-step ${hasBytecode ? "step-done" : "step-warn"}`}>
             <span className="step-num">{hasBytecode ? "✓" : "3"}</span>
             <span className="step-label">
-              {hasBytecode
-                ? "Contract bytecode ready"
-                : "Run: npm run build:contracts"}
+              {hasBytecode ? "Contract bytecode ready" : "Run: npm run build:contracts"}
             </span>
           </div>
         </div>
 
-        {/* Deploy status */}
         {deployStatus.msg && (
           <div className={`tx-msg tx-msg-${deployStatus.type} deploy-status-msg`}>
             {deployStatus.type === "loading" && <span className="spinner" />}
@@ -722,7 +828,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Deploy button */}
         <button
           className="action-btn deploy-btn"
           onClick={deployMarket}
@@ -733,7 +838,6 @@ export default function App() {
 
         <div className="deploy-divider"><span>or paste existing address</span></div>
 
-        {/* Manual address entry */}
         <div className="manual-addr-row">
           <input
             className="form-input manual-addr-input"
@@ -751,15 +855,132 @@ export default function App() {
 
         <p className="deploy-note">
           You need Sepolia ETH in MetaMask to pay gas. Get some from a{" "}
-          <a
-            href="https://sepoliafaucet.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="deploy-link"
-          >
+          <a href="https://sepoliafaucet.com" target="_blank" rel="noopener noreferrer" className="deploy-link">
             Sepolia faucet
           </a>.
         </p>
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────
+  //  TAB: HOME
+  // ──────────────────────────────────────────────────────────
+  function HomeTab() {
+    return (
+      <div className="home-tab">
+        <div className="home-hero">
+          <div className="home-hero-badge">Decentralized · Transparent · On-Chain</div>
+          <h2 className="home-hero-title">The Future Of Agriculture</h2>
+          <p className="home-hero-desc">
+            YodaMart is a peer-to-peer lettuce marketplace built on Ethereum. Sellers list fresh
+            produce directly, buyers pay with YODA tokens, and every transaction is recorded
+            permanently on-chain — no middleman, no trust required.
+          </p>
+        </div>
+
+        <div className="home-section-label">Featured Market</div>
+        <div className="home-featured-market">
+          <div className="home-featured-badge">Most Popular</div>
+          <div className="home-featured-title">YodaMart Lettuce Market</div>
+          <p className="home-featured-desc">
+            The primary market used for all demonstrations. Load this address in the Marketplace to start trading immediately.
+          </p>
+          <div className="home-addr-row">
+            <span className="home-token-addr">Contract address: <span className="address-value">0x3b92FF1337604ECB11AfF3359dbc31F5F7c5860E</span></span>
+            <button className="copy-addr-btn" onClick={() => {
+              navigator.clipboard.writeText("0x3b92FF1337604ECB11AfF3359dbc31F5F7c5860E");
+              setCopiedMarket(true);
+              setTimeout(() => setCopiedMarket(false), 2000);
+            }}>
+              {copiedMarket ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              )}
+              {copiedMarket ? "Copied!" : "Copy"}
+            </button>
+          </div>
+        </div>
+
+        <div className="home-section-label">Features</div>
+        <ul className="feature-list">
+          <li className="feature-item">
+            <span className="feature-dot" />
+            <span className="feature-item-title">Buy Lettuce</span>
+            <span className="feature-item-desc">Browse by category and quality. Buy 10+ units for an automatic 20% discount.</span>
+          </li>
+          <li className="feature-item">
+            <span className="feature-dot" />
+            <span className="feature-item-title">Sell Lettuce</span>
+            <span className="feature-item-desc">Set a price, quantity, category, and quality grade. Buyers find and purchase instantly.</span>
+          </li>
+          <li className="feature-item">
+            <span className="feature-dot" />
+            <span className="feature-item-title">Auctions</span>
+            <span className="feature-item-desc">Open-bid auctions with a set duration. Highest bid wins; outbid funds are returned automatically.</span>
+          </li>
+          <li className="feature-item">
+            <span className="feature-dot" />
+            <span className="feature-item-title">Promotions</span>
+            <span className="feature-item-desc">Pay a daily YODA fee to boost visibility. Higher-fee listings rank first in the Promotions tab.</span>
+          </li>
+          <li className="feature-item">
+            <span className="feature-dot" />
+            <span className="feature-item-title">Purchase Receipts</span>
+            <span className="feature-item-desc">Every purchase mints an on-chain receipt tied to your wallet, viewable in the Buy tab.</span>
+          </li>
+        </ul>
+
+        <div className="home-section-label">YODA Token</div>
+        <div className="home-token-card">
+          <div className="home-token-title">YODA (YodaMart Token)</div>
+          <p className="home-token-desc">
+            All transactions on YodaMart use YODA — an ERC-20 token deployed on the Sepolia
+            testnet. YODA has 2 decimal places (like cents): a raw value of 100 equals 1.00 YODA.
+            You need YODA to buy lettuce, place bids, and pay promotion fees.
+          </p>
+          <div className="home-token-addr">
+            Token address: <span className="address-value">{YODA_TOKEN_ADDRESS}</span>
+          </div>
+        </div>
+
+        <div className="home-section-label">How It Works</div>
+        <div className="home-steps">
+          <div className="home-step">
+            <div className="home-step-num">1</div>
+            <div className="home-step-body">
+              <div className="home-step-title">Connect MetaMask</div>
+              <p className="home-step-desc">
+                Click "Connect Wallet" in the top right. Switch to the Sepolia testnet when prompted.
+              </p>
+            </div>
+          </div>
+          <div className="home-step">
+            <div className="home-step-num">2</div>
+            <div className="home-step-body">
+              <div className="home-step-title">Deploy or Load the Market</div>
+              <p className="home-step-desc">
+                Deploy a fresh LettuceMarket contract from your browser, or paste an existing
+                address. The address is saved in your browser automatically.
+              </p>
+            </div>
+          </div>
+          <div className="home-step">
+            <div className="home-step-num">3</div>
+            <div className="home-step-body">
+              <div className="home-step-title">Start Trading</div>
+              <p className="home-step-desc">
+                List lettuce in the Sell tab, browse and buy in the Buy tab, compete in live
+                Auctions, or boost visibility in Promotions. All transactions go through MetaMask.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -770,52 +991,91 @@ export default function App() {
   const availableListings = products.filter((p) => Number(p.quantity) > 0);
 
   function BuyTab() {
-    if (loadingListings) return <div className="loading-state"><div className="loading-spinner-large" /><p>Fetching listings…</p></div>;
-    if (availableListings.length === 0) return (
-      <div className="empty-state">
-        <h3>No listings yet</h3>
-        <p>Be the first to list your lettuce in the Sell tab.</p>
-      </div>
-    );
     return (
-      <div className="product-grid">
-        {availableListings.map((item) => (
-          <div className="card" key={item.id}>
-            <div className="card-header">
-              <span className={`quality-badge ${qualityClass(item.quality)}`}>
-                {item.quality}
-              </span>
-              <span className="id-tag">#{item.id}</span>
-            </div>
-            <div className="card-body">
-              <h3 className="card-title">{item.category} Lettuce</h3>
-              <div className="card-details">
-                <div className="detail-row">
-                  <div>
-                    <span className="detail-label">Price per unit</span>
-                    <span className="detail-value price-value">{formatYoda(item.pricePerUnit)} YODA</span>
+      <div className="tab-panels">
+        {/* ── Active listings ───────────────────────────── */}
+        {loadingListings ? (
+          <div className="loading-state"><div className="loading-spinner-large" /><p>Fetching listings…</p></div>
+        ) : availableListings.length === 0 ? (
+          <div className="empty-state">
+            <h3>No listings yet</h3>
+            <p>Be the first to list your lettuce in the Sell tab.</p>
+          </div>
+        ) : (
+          <div className="product-grid">
+            {availableListings.map((item) => (
+              <div className="card" key={item.id}>
+                <div className="card-header">
+                  <span className={`quality-badge ${qualityClass(item.quality)}`}>{item.quality}</span>
+                  <span className="id-tag">#{item.id}</span>
+                </div>
+                <div className="card-body">
+                  <h3 className="card-title">{item.category} Lettuce</h3>
+                  <div className="card-details">
+                    <div className="detail-row"><div>
+                      <span className="detail-label">Price per unit</span>
+                      <span className="detail-value price-value">{formatYoda(item.pricePerUnit)} YODA</span>
+                    </div></div>
+                    <div className="detail-row"><div>
+                      <span className="detail-label">Available</span>
+                      <span className="detail-value">{item.quantity} units</span>
+                    </div></div>
+                    <div className="detail-row"><div>
+                      <span className="detail-label">Seller</span>
+                      <span className="detail-value address-value">{shortenAddr(item.seller)}</span>
+                    </div></div>
                   </div>
                 </div>
-                <div className="detail-row">
-                  <div>
-                    <span className="detail-label">Available</span>
-                    <span className="detail-value">{item.quantity} units</span>
-                  </div>
-                </div>
-                <div className="detail-row">
-                  <div>
-                    <span className="detail-label">Seller</span>
-                    <span className="detail-value address-value">{shortenAddr(item.seller)}</span>
-                  </div>
+                <div className="card-footer card-footer-buy">
+                  <span className="bulk-note">Buy 10+ for a 20% bulk discount</span>
+                  {BuyAmountRow({ item })}
                 </div>
               </div>
-            </div>
-            <div className="card-footer card-footer-buy">
-              <span className="bulk-note">Buy 10+ for a 20% bulk discount</span>
-              {BuyAmountRow({ item })}
-            </div>
+            ))}
           </div>
-        ))}
+        )}
+
+        {/* ── My Purchases ──────────────────────────────── */}
+        {walletAddress && (
+          <div className="purchases-section">
+            <h3 className="form-title">My Purchases</h3>
+            {loadingReceipts ? (
+              <div className="loading-state" style={{ padding: "40px 32px" }}>
+                <div className="loading-spinner-large" /><p>Loading receipts…</p>
+              </div>
+            ) : receipts.length === 0 ? (
+              <div className="empty-state" style={{ padding: "40px 32px" }}>
+                <h3>No purchases yet</h3>
+                <p>Buy lettuce from the listings above to see your receipts here.</p>
+              </div>
+            ) : (
+              <div className="purchases-table-wrap">
+                <table className="purchases-table">
+                  <thead>
+                    <tr>
+                      <th>Receipt #</th>
+                      <th>Listing ID</th>
+                      <th>Quantity</th>
+                      <th>Total Paid</th>
+                      <th>Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...receipts].reverse().map((r) => (
+                      <tr key={r.purchaseId}>
+                        <td>#{r.purchaseId}</td>
+                        <td>#{r.listingId}</td>
+                        <td>{r.quantity} units</td>
+                        <td className="price-value">{formatYoda(r.totalPaid)} YODA</td>
+                        <td>{formatDate(r.timestamp)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -874,26 +1134,20 @@ export default function App() {
               {myListings.map((item) => (
                 <div className="card" key={item.id}>
                   <div className="card-header">
-                    <span className={`quality-badge ${qualityClass(item.quality)}`}>
-                      {item.quality}
-                    </span>
+                    <span className={`quality-badge ${qualityClass(item.quality)}`}>{item.quality}</span>
                     <span className="id-tag">#{item.id}</span>
                   </div>
                   <div className="card-body">
                     <h3 className="card-title">{item.category} Lettuce</h3>
                     <div className="card-details">
-                      <div className="detail-row">
-                        <div>
-                          <span className="detail-label">Price per unit</span>
-                          <span className="detail-value price-value">{formatYoda(item.pricePerUnit)} YODA</span>
-                        </div>
-                      </div>
-                      <div className="detail-row">
-                        <div>
-                          <span className="detail-label">Remaining</span>
-                          <span className="detail-value">{item.quantity} units</span>
-                        </div>
-                      </div>
+                      <div className="detail-row"><div>
+                        <span className="detail-label">Price per unit</span>
+                        <span className="detail-value price-value">{formatYoda(item.pricePerUnit)} YODA</span>
+                      </div></div>
+                      <div className="detail-row"><div>
+                        <span className="detail-label">Remaining</span>
+                        <span className="detail-value">{item.quantity} units</span>
+                      </div></div>
                     </div>
                   </div>
                   <div className="card-footer">
@@ -1006,9 +1260,7 @@ export default function App() {
               return (
                 <div className="card auction-card" key={a.id}>
                   <div className="card-header">
-                    <span className={`quality-badge ${qualityClass(a.quality)}`}>
-                      {a.quality}
-                    </span>
+                    <span className={`quality-badge ${qualityClass(a.quality)}`}>{a.quality}</span>
                     <div className="auction-meta">
                       <span className="id-tag">#{a.id}</span>
                       <span className={`auction-status-tag ${a.finalized ? "tag-finalized" : active ? "tag-active" : "tag-ended"}`}>
@@ -1023,8 +1275,7 @@ export default function App() {
                       <div className="detail-row"><div><span className="detail-label">Starting bid</span><span className="detail-value price-value">{formatYoda(a.startingBid)} YODA</span></div></div>
                       <div className="detail-row"><div><span className="detail-label">Highest bid</span><span className="detail-value price-value">{BigInt(a.highestBid) > 0n ? formatYoda(a.highestBid) + " YODA" : "No bids yet"}</span></div></div>
                       {a.highestBidder !== ethers.ZeroAddress && (
-                        <div className="detail-row"><div><span className="detail-label">Highest bidder</span><span className="detail-value address-value">{shortenAddr(a.highestBidder)}</span></div>
-                        </div>
+                        <div className="detail-row"><div><span className="detail-label">Highest bidder</span><span className="detail-value address-value">{shortenAddr(a.highestBidder)}</span></div></div>
                       )}
                       <div className="detail-row"><div><span className="detail-label">Ends</span><span className="detail-value">{formatDate(a.endTime)}</span></div></div>
                       <div className="detail-row"><div><span className="detail-label">Seller</span><span className="detail-value address-value">{shortenAddr(a.seller)}</span></div></div>
@@ -1131,6 +1382,63 @@ export default function App() {
   }
 
   // ──────────────────────────────────────────────────────────
+  //  TAB: HISTORY
+  // ──────────────────────────────────────────────────────────
+  function HistoryTab() {
+    return (
+      <div className="tab-panels">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+          <h3 className="form-title" style={{ margin: 0 }}>Transaction Log</h3>
+          <button className="refresh-btn" onClick={loadHistory} disabled={loadingHistory}>
+            {loadingHistory ? <><span className="spinner" /> Loading…</> : "↻ Refresh"}
+          </button>
+        </div>
+
+        {loadingHistory ? (
+          <div className="loading-state"><div className="loading-spinner-large" /><p>Fetching on-chain events…</p></div>
+        ) : historyEvents.length === 0 ? (
+          <div className="empty-state">
+            <h3>No events yet</h3>
+            <p>On-chain events appear here once listings, purchases, auctions, and bids are made.</p>
+            <button className="action-btn action-btn-secondary" onClick={loadHistory} style={{ marginTop: "12px" }}>
+              Load Events
+            </button>
+          </div>
+        ) : (
+          <div className="history-table-wrap">
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>Action</th>
+                  <th>Wallet</th>
+                  <th>Details</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyEvents.map((ev, i) => (
+                  <tr key={i} className="history-row">
+                    <td>
+                      <span className={`history-type-badge history-type-${ev.type.toLowerCase().replace(/ /g, "-")}`}>
+                        {ev.type}
+                      </span>
+                    </td>
+                    <td className="address-value">{shortenAddr(ev.wallet)}</td>
+                    <td className="history-detail">{ev.detail}</td>
+                    <td className="history-time">
+                      {ev.timestamp ? formatDate(ev.timestamp) : `Block ${ev.blockNumber}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────
   //  Derived display values
   // ──────────────────────────────────────────────────────────
   const now = Math.floor(Date.now() / 1000);
@@ -1148,6 +1456,22 @@ export default function App() {
           <span className="brand-name">YodaMart</span>
         </div>
 
+        <div className="nav-links">
+          {[
+            { key: "home",    label: "Home" },
+            { key: "market",  label: "Marketplace" },
+            { key: "history", label: "History" },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              className={`nav-link ${activePage === key ? "nav-link-active" : ""}`}
+              onClick={() => setActivePage(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         <div className="nav-actions">
           {yodaBalance !== null && (
             <div className="yoda-balance-badge">
@@ -1157,7 +1481,18 @@ export default function App() {
 
           <button className="theme-toggle" onClick={() => setDarkMode((d) => !d)}
             title="Toggle light / dark mode" aria-label="Toggle theme">
-            {darkMode ? "Light" : "Dark"}
+            {darkMode ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+              </svg>
+            )}
           </button>
 
           <button className="connect-btn" onClick={connectWallet}>
@@ -1176,131 +1511,123 @@ export default function App() {
         </div>
       )}
 
-      {/* ── Hero ─────────────────────────────────────────── */}
-      <header className="hero">
-        <div className="hero-content">
-          <div className="hero-badge">
-            <span className="badge-dot" />
-            The Future Of Agriculture
+      {/* ── HOME page ────────────────────────────────────── */}
+      {activePage === "home" && (
+        <main className="page-content">
+          {HomeTab()}
+        </main>
+      )}
+
+      {/* ── HISTORY page ─────────────────────────────────── */}
+      {activePage === "history" && (
+        <main className="page-content">
+          <div className="page-header">
+            <h2>Transaction History</h2>
+            <p>All on-chain events from the deployed LettuceMarket contract, newest first.</p>
           </div>
-          <h1 className="hero-title">
-            Fresh Lettuce,<br />
-            <span className="gradient-text">On-Chain</span>
-          </h1>
-          <p className="hero-subtitle">
-            Buy and sell premium lettuce using Yoda tokens in a
-            decentralized grocery-style marketplace powered by Ethereum.
-          </p>
-          <div className="hero-stats">
-            <div className="stat">
-              <span className="stat-value">{availableListings.length}</span>
-              <span className="stat-label">Listings</span>
-            </div>
-            <div className="stat-divider" />
-            <div className="stat">
-              <span className="stat-value">{activeAuctionsCount}</span>
-              <span className="stat-label">Auctions</span>
-            </div>
-            <div className="stat-divider" />
-            <div className="stat">
-              <span className="stat-value">{yodaBalance ?? "—"}</span>
-              <span className="stat-label">YODA Balance</span>
-            </div>
-            <div className="stat-divider" />
-            <div className="stat">
-              <span className="stat-value">Sepolia</span>
-              <span className="stat-label">Network</span>
-            </div>
-          </div>
-        </div>
-        <div className="hero-visual">
-          <div className="hero-card-float">
-            <div className="float-label">Lettuce Market</div>
-            <div className="float-sub">Fresh · Verified · On-Chain</div>
-            <span className="float-badge">Live Pricing</span>
-          </div>
-        </div>
-      </header>
-
-      {/* ── Status Bar ───────────────────────────────────── */}
-      <div className={`status-bar ${statusVariant(status, walletAddress)}`}>
-        <span className="status-dot" />
-        {status}
-        {walletAddress && (
-          <span className="status-address"> · {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}</span>
-        )}
-      </div>
-
-      {/* ── About ────────────────────────────────────────── */}
-      <section className="about-section">
-        <div className="about-content">
-          <h2>About YodaMart</h2>
-          <p>
-            A decentralized platform where farmers list lettuce by unit, bundle, or bulk quantity.
-            Supports bulk discounts, auctions, and promotional offers. Powered by the YODA token on
-            Sepolia. Deploy the marketplace contract once from your browser — no Remix, no Alchemy,
-            no private key setup.
-          </p>
-        </div>
-      </section>
-
-      {/* ── Marketplace / Deploy Panel ───────────────────── */}
-      <section className="products-section">
-
-        {!marketAddress ? (
-          /* ── No contract configured — show deploy panel ── */
-          DeployPanel()
-        ) : (
-          /* ── Contract configured — show full marketplace ─ */
-          <>
-            <div className="section-header">
-              <div>
-                <h2>Marketplace</h2>
-                <p className="section-subtitle">
-                  {shortenAddr(marketAddress)}
-                  <button className="change-addr-btn" onClick={clearMarketAddress} title="Change marketplace address">
-                    ✕ Change
-                  </button>
-                </p>
-              </div>
-              <button
-                className="refresh-btn"
-                onClick={refreshAll}
-                disabled={loadingListings || loadingAuctions || loadingPromotions}
-              >
-                {(loadingListings || loadingAuctions || loadingPromotions)
-                  ? <span className="spinner" /> : "↻"}{" "}Refresh
+          {marketAddress ? HistoryTab() : (
+            <div className="empty-state">
+              <h3>No contract loaded</h3>
+              <p>Go to Marketplace and deploy or connect a LettuceMarket contract first.</p>
+              <button className="action-btn action-btn-secondary" onClick={() => setActivePage("market")} style={{ marginTop: "12px" }}>
+                Go to Marketplace
               </button>
             </div>
+          )}
+        </main>
+      )}
 
-            {TxMsg()}
-
-            <div className="tab-bar">
-              {[
-                { key: "buy",        label: "Buy" },
-                { key: "sell",       label: "Sell" },
-                { key: "auctions",   label: "Auctions" },
-                { key: "promotions", label: "Promotions" },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  className={`tab-btn ${activeTab === key ? "tab-btn-active" : ""}`}
-                  onClick={() => { setActiveTab(key); setTxStatus({ type: "", msg: "" }); }}
-                >
-                  {label}
-                </button>
-              ))}
+      {/* ── MARKETPLACE page ─────────────────────────────── */}
+      {activePage === "market" && (
+        <>
+          {/* ── Market stat strip ────────────────────────── */}
+          <div className="market-strip">
+            <div className="market-strip-stats">
+              <div className="stat">
+                <span className="stat-value">{availableListings.length}</span>
+                <span className="stat-label">Listings</span>
+              </div>
+              <div className="stat-divider" />
+              <div className="stat">
+                <span className="stat-value">{activeAuctionsCount}</span>
+                <span className="stat-label">Live Auctions</span>
+              </div>
+              <div className="stat-divider" />
+              <div className="stat">
+                <span className="stat-value">{yodaBalance ?? "—"}</span>
+                <span className="stat-label">Your YODA</span>
+              </div>
+              <div className="stat-divider" />
+              <div className="stat">
+                <span className="stat-value">Sepolia</span>
+                <span className="stat-label">Network</span>
+              </div>
             </div>
-
-            <div className="tab-content">
-              {activeTab === "buy"        && BuyTab()}
-              {activeTab === "sell"       && SellTab()}
-              {activeTab === "auctions"   && AuctionsTab()}
-              {activeTab === "promotions" && PromotionsTab()}
+            <div className={`market-strip-status ${statusVariant(status, walletAddress)}`}>
+              <span className="status-dot" />
+              {status}
+              {walletAddress && (
+                <span className="status-address"> · {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}</span>
+              )}
             </div>
-          </>
-        )}
-      </section>
+          </div>
+
+          {/* ── Marketplace / Deploy Panel ───────────────── */}
+          <section className="products-section">
+            {!marketAddress ? (
+              DeployPanel()
+            ) : (
+              <>
+                <div className="section-header">
+                  <div>
+                    <h2>Marketplace</h2>
+                    <p className="section-subtitle">
+                      {shortenAddr(marketAddress)}
+                      <button className="change-addr-btn" onClick={clearMarketAddress} title="Change marketplace address">
+                        ✕ Change
+                      </button>
+                    </p>
+                  </div>
+                  <button
+                    className="refresh-btn"
+                    onClick={refreshAll}
+                    disabled={loadingListings || loadingAuctions || loadingPromotions}
+                  >
+                    {(loadingListings || loadingAuctions || loadingPromotions)
+                      ? <span className="spinner" /> : "↻"}{" "}Refresh
+                  </button>
+                </div>
+
+                {TxMsg()}
+
+                <div className="tab-bar">
+                  {[
+                    { key: "buy",        label: "Buy" },
+                    { key: "sell",       label: "Sell" },
+                    { key: "auctions",   label: "Auctions" },
+                    { key: "promotions", label: "Promotions" },
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      className={`tab-btn ${activeTab === key ? "tab-btn-active" : ""}`}
+                      onClick={() => { setActiveTab(key); setTxStatus({ type: "", msg: "" }); }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="tab-content">
+                  {activeTab === "buy"        && BuyTab()}
+                  {activeTab === "sell"       && SellTab()}
+                  {activeTab === "auctions"   && AuctionsTab()}
+                  {activeTab === "promotions" && PromotionsTab()}
+                </div>
+              </>
+            )}
+          </section>
+        </>
+      )}
 
       {/* ── Footer ───────────────────────────────────────── */}
       <footer className="footer">

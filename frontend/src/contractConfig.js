@@ -50,6 +50,10 @@ export const LETTUCE_MARKET_ABI = [
   "function promotions(uint256) view returns (bool isAuction, uint256 listingId, address seller, uint256 feePaid, uint256 expiresAt)",
   "function getActivePromotions() view returns (tuple(bool isAuction, uint256 listingId, address seller, uint256 feePaid, uint256 expiresAt)[])",
 
+  // receipts
+  "function nextPurchaseId() view returns (uint256)",
+  "function getReceipts(address buyer) view returns (tuple(uint256 purchaseId, uint256 listingId, uint256 quantity, uint256 totalPaid, uint256 timestamp)[])",
+
   // ── writes ───────────────────────────────────────────────
   "function listLettuce(uint256 pricePerUnit, uint256 quantity, string category, string quality)",
   "function buyLettuce(uint256 id, uint256 amount)",
@@ -70,4 +74,5 @@ export const LETTUCE_MARKET_ABI = [
   "event BidWithdrawn(uint256 indexed auctionId, address indexed bidder, uint256 amount)",
   "event PromotionAdded(uint256 indexed promotionIndex, bool indexed isAuction, uint256 indexed listingId, address seller, uint256 feePaid, uint256 expiresAt)",
   "event PromotionFeeUpdated(uint256 newFeePerDay)",
+  "event ReceiptIssued(address indexed buyer, uint256 indexed purchaseId, uint256 indexed listingId, uint256 quantity, uint256 totalPaid, uint256 timestamp)",
 ];

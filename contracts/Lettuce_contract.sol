@@ -13,6 +13,7 @@ contract LettuceMarket {
 
     uint public nextId;
     uint public nextAuctionId;
+    uint public nextPurchaseId;
 
     struct Promotion {
         bool    isAuction;
@@ -97,7 +98,7 @@ contract LettuceMarket {
             expiresAt: expiresAt
         });
 
-        promotions.push(promo);                    // add to end first
+        promotions.push(promo);
         uint i = promotions.length - 1;
         while (i > 0 && promotions[i].feePaid > promotions[i - 1].feePaid) {
             Promotion memory tmp = promotions[i - 1];
@@ -125,11 +126,9 @@ contract LettuceMarket {
         return active;
     }
 
- 
     function totalPromotions() external view returns (uint) {
         return promotions.length;
     }
-
 
 
     struct Lettuce {
@@ -145,6 +144,31 @@ contract LettuceMarket {
 
     event LettuceListed(uint id, address seller, uint price, uint quantity);
     event LettucePurchased(uint id, address buyer, uint amount);
+
+    // ── Purchase Receipts ────────────────────────────────────────
+    struct Receipt {
+        uint purchaseId;
+        uint listingId;
+        uint quantity;
+        uint totalPaid;
+        uint timestamp;
+    }
+
+    mapping(address => Receipt[]) private buyerReceipts;
+
+    event ReceiptIssued(
+        address indexed buyer,
+        uint    indexed purchaseId,
+        uint    indexed listingId,
+        uint    quantity,
+        uint    totalPaid,
+        uint    timestamp
+    );
+
+    function getReceipts(address buyer) external view returns (Receipt[] memory) {
+        return buyerReceipts[buyer];
+    }
+    // ─────────────────────────────────────────────────────────────
 
     function listLettuce(
         uint pricePerUnit,
@@ -187,7 +211,18 @@ contract LettuceMarket {
         require(item.quantity >= finalAmount, "Not enough stock for deal");
         item.quantity -= finalAmount;
 
+        // Issue on-chain receipt
+        uint pid = nextPurchaseId++;
+        buyerReceipts[msg.sender].push(Receipt({
+            purchaseId: pid,
+            listingId:  id,
+            quantity:   finalAmount,
+            totalPaid:  totalPrice,
+            timestamp:  block.timestamp
+        }));
+
         emit LettucePurchased(id, msg.sender, finalAmount);
+        emit ReceiptIssued(msg.sender, pid, id, finalAmount, totalPrice, block.timestamp);
     }
 
     function getLettuce(uint id) public view returns (Lettuce memory) {
@@ -204,7 +239,7 @@ contract LettuceMarket {
         uint highestBid;
         address highestBidder;
         uint endTime;
-        bool finalized;       
+        bool finalized;
     }
 
     mapping(uint => Auction) public auctions;
@@ -305,7 +340,6 @@ contract LettuceMarket {
         emit BidWithdrawn(auctionId, msg.sender, amount);
     }
 
-
     function finalizeAuction(uint auctionId) public {
         Auction storage auction = auctions[auctionId];
 
@@ -326,11 +360,9 @@ contract LettuceMarket {
         }
     }
 
-
     function getAuction(uint auctionId) public view returns (Auction memory) {
         return auctions[auctionId];
     }
-
 
     function isAuctionActive(uint auctionId) public view returns (bool) {
         Auction storage auction = auctions[auctionId];
