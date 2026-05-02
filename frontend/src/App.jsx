@@ -14,24 +14,15 @@ import {
   LETTUCE_MARKET_BYTECODE,
 } from "./contractArtifact";
 
-// ──────────────────────────────────────────────────────────────
-//  Constants
-// ──────────────────────────────────────────────────────────────
 const SEPOLIA_CHAIN_ID   = "0xaa36a7"; // 11155111
 const LS_KEY             = "lettuce_market_address";
 
 const CATEGORIES    = ["Romaine", "Iceberg", "Butterhead", "Arugula", "Spinach", "Mixed"];
 const QUALITIES     = ["Premium", "Standard", "Economy"];
 
-// ──────────────────────────────────────────────────────────────
-//  YODA decimal helpers  (2 decimals)
-// ──────────────────────────────────────────────────────────────
 const parseYoda  = (val) => ethers.parseUnits(String(val), 2);
 const formatYoda = (val) => ethers.formatUnits(val, 2);
 
-// ──────────────────────────────────────────────────────────────
-//  Utility helpers
-// ──────────────────────────────────────────────────────────────
 function qualityClass(q) {
   return q ? "quality-" + q.toLowerCase() : "";
 }
@@ -68,9 +59,6 @@ function formatDate(ts) {
   return new Date(Number(ts) * 1000).toLocaleString();
 }
 
-// ──────────────────────────────────────────────────────────────
-//  Read saved market address (localStorage → env var → empty)
-// ──────────────────────────────────────────────────────────────
 function initMarketAddress() {
   try {
     const saved = localStorage.getItem(LS_KEY);
@@ -82,17 +70,12 @@ function initMarketAddress() {
   return "";
 }
 
-// ──────────────────────────────────────────────────────────────
-//  App component
-// ──────────────────────────────────────────────────────────────
 export default function App() {
-  // ── wallet / network ──────────────────────────────────────
   const [walletAddress, setWalletAddress] = useState("");
   const [chainId, setChainId]             = useState("");
   const [status, setStatus]               = useState("Not connected");
   const [darkMode, setDarkMode]           = useState(false);
 
-  // ── market address (localStorage-backed) ─────────────────
   const [marketAddress, setMarketAddressState] = useState(initMarketAddress);
   const [manualAddrInput, setManualAddrInput]  = useState("");
   const [addrInputError, setAddrInputError]    = useState("");
@@ -124,7 +107,6 @@ export default function App() {
     setManualAddrInput("");
   }
 
-  // ── data ──────────────────────────────────────────────────
   const [yodaBalance,   setYodaBalance]   = useState(null);
   const [products,      setProducts]      = useState([]);
   const [auctions,      setAuctions]      = useState([]);
@@ -133,56 +115,39 @@ export default function App() {
   const [receipts,      setReceipts]      = useState([]);
   const [historyEvents, setHistoryEvents] = useState([]);
 
-  // ── loading flags ─────────────────────────────────────────
   const [loadingListings,   setLoadingListings]   = useState(false);
   const [loadingAuctions,   setLoadingAuctions]   = useState(false);
   const [loadingPromotions, setLoadingPromotions] = useState(false);
   const [loadingReceipts,   setLoadingReceipts]   = useState(false);
   const [loadingHistory,    setLoadingHistory]    = useState(false);
 
-  // ── top-level page (Home / Market / History live in the navbar)
   const [activePage, setActivePage] = useState("home");
+  const [activeTab, setActiveTab]   = useState("buy");
 
-  // ── active marketplace tab ────────────────────────────────
-  const [activeTab, setActiveTab] = useState("buy");
-
-  // ── marketplace tx status ─────────────────────────────────
-  const [txStatus, setTxStatus] = useState({ type: "", msg: "" });
-
-  // ── deploy status ─────────────────────────────────────────
+  const [txStatus, setTxStatus]         = useState({ type: "", msg: "" });
   const [deployStatus, setDeployStatus] = useState({ type: "", msg: "" });
   const [deploying, setDeploying]       = useState(false);
   const [copiedMarket, setCopiedMarket] = useState(false);
 
-  // ── buy form ──────────────────────────────────────────────
   const [buyAmounts, setBuyAmounts] = useState({});
 
-  // ── sell form ─────────────────────────────────────────────
   const [sellForm, setSellForm] = useState({
     pricePerUnit: "", quantity: "", category: "Romaine", quality: "Standard",
   });
 
-  // ── auction forms ─────────────────────────────────────────
   const [auctionForm, setAuctionForm] = useState({
     quantity: "", startingBid: "", durationDays: "1", category: "Romaine", quality: "Standard",
   });
   const [bidForm, setBidForm]       = useState({ auctionId: "", bidAmount: "" });
   const [withdrawId, setWithdrawId] = useState("");
 
-  // ── promote forms ─────────────────────────────────────────
   const [promoteListingForm, setPromoteListingForm] = useState({ listingId: "", durationDays: "1" });
   const [promoteAuctionForm, setPromoteAuctionForm] = useState({ auctionId: "", durationDays: "1" });
 
-  // ──────────────────────────────────────────────────────────
-  //  Derived
-  // ──────────────────────────────────────────────────────────
   const isWrongNetwork = walletAddress && chainId && chainId !== SEPOLIA_CHAIN_ID;
   // True only when build:contracts has run and both ABI + bytecode are populated
   const hasBytecode    = Boolean(LETTUCE_MARKET_BYTECODE) && DEPLOY_ABI.length > 0;
 
-  // ──────────────────────────────────────────────────────────
-  //  Contract helpers
-  // ──────────────────────────────────────────────────────────
   async function getContracts() {
     const provider = new ethers.BrowserProvider(window.ethereum);
     const signer   = await provider.getSigner();
@@ -198,9 +163,6 @@ export default function App() {
     return { provider, market, yoda };
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  Sepolia helpers
-  // ──────────────────────────────────────────────────────────
   async function ensureSepolia() {
     const cid = await window.ethereum.request({ method: "eth_chainId" });
     if (cid !== SEPOLIA_CHAIN_ID) {
@@ -245,9 +207,6 @@ export default function App() {
     }
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  Wallet connect
-  // ──────────────────────────────────────────────────────────
   async function connectWallet() {
     if (!window.ethereum) { setStatus("MetaMask not found"); return; }
     try {
@@ -262,9 +221,6 @@ export default function App() {
     }
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  DEPLOY LETTUCE MARKET from browser
-  // ──────────────────────────────────────────────────────────
   async function deployMarket() {
     if (!hasBytecode || !DEPLOY_ABI.length) {
       setDeployStatus({
@@ -284,8 +240,6 @@ export default function App() {
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer   = await provider.getSigner();
-      // Use DEPLOY_ABI (full JSON from Hardhat artifact) — it includes the
-      // constructor entry so ethers knows factory.deploy() takes an address arg.
       const factory  = new ethers.ContractFactory(DEPLOY_ABI, LETTUCE_MARKET_BYTECODE, signer);
 
       setDeployStatus({ type: "loading", msg: "MetaMask will ask you to confirm the deployment…" });
@@ -305,9 +259,6 @@ export default function App() {
     }
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  Load data
-  // ──────────────────────────────────────────────────────────
   const loadYodaBalance = useCallback(async () => {
     if (!walletAddress || !window.ethereum || !marketAddress) return;
     try {
@@ -493,9 +444,6 @@ export default function App() {
     setStatus(walletAddress ? "Wallet connected" : "Loaded");
   }, [loadListings, loadAuctions, loadPromotions, loadYodaBalance, loadReceipts, loadHistory, walletAddress, activePage]);
 
-  // ──────────────────────────────────────────────────────────
-  //  Effects
-  // ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (window.ethereum && marketAddress) {
       loadListings();
@@ -538,9 +486,6 @@ export default function App() {
     };
   }, []);
 
-  // ──────────────────────────────────────────────────────────
-  //  Marketplace actions
-  // ──────────────────────────────────────────────────────────
   async function handleBuy(item) {
     const rawAmt = buyAmounts[item.id] || "";
     const amt    = parseInt(rawAmt, 10);
@@ -726,11 +671,8 @@ export default function App() {
     }
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  Shared sub-components
-  //  Called as functions (not JSX) to avoid React remounting
-  //  inner components on every parent state change.
-  // ──────────────────────────────────────────────────────────
+  // Inner functions called as plain functions, not JSX components, to preserve
+  // input focus across parent re-renders (avoids React remounting the subtree).
   function TxMsg() {
     if (!txStatus.msg) return null;
     return (
@@ -776,9 +718,6 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  DEPLOY PANEL (shown when no marketAddress)
-  // ──────────────────────────────────────────────────────────
   function DeployPanel() {
     return (
       <div className="deploy-panel">
@@ -863,9 +802,6 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  TAB: HOME
-  // ──────────────────────────────────────────────────────────
   function HomeTab() {
     return (
       <div className="home-tab">
@@ -985,15 +921,11 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  TAB: BUY
-  // ──────────────────────────────────────────────────────────
   const availableListings = products.filter((p) => Number(p.quantity) > 0);
 
   function BuyTab() {
     return (
       <div className="tab-panels">
-        {/* ── Active listings ───────────────────────────── */}
         {loadingListings ? (
           <div className="loading-state"><div className="loading-spinner-large" /><p>Fetching listings…</p></div>
         ) : availableListings.length === 0 ? (
@@ -1035,7 +967,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ── My Purchases ──────────────────────────────── */}
         {walletAddress && (
           <div className="purchases-section">
             <h3 className="form-title">My Purchases</h3>
@@ -1080,9 +1011,6 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  TAB: SELL
-  // ──────────────────────────────────────────────────────────
   const myListings = walletAddress
     ? products.filter((p) => p.seller.toLowerCase() === walletAddress.toLowerCase())
     : [];
@@ -1162,11 +1090,7 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  TAB: AUCTIONS
-  // ──────────────────────────────────────────────────────────
   function AuctionsTab() {
-    const now = Math.floor(Date.now() / 1000);
     return (
       <div className="tab-panels">
         <div className="form-panel">
@@ -1297,9 +1221,6 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  TAB: PROMOTIONS
-  // ──────────────────────────────────────────────────────────
   function PromotionsTab() {
     const dailyFeeDisplay = feePerDay ? formatYoda(feePerDay) : "—";
     return (
@@ -1381,9 +1302,6 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  TAB: HISTORY
-  // ──────────────────────────────────────────────────────────
   function HistoryTab() {
     return (
       <div className="tab-panels">
@@ -1438,19 +1356,12 @@ export default function App() {
     );
   }
 
-  // ──────────────────────────────────────────────────────────
-  //  Derived display values
-  // ──────────────────────────────────────────────────────────
   const now = Math.floor(Date.now() / 1000);
   const activeAuctionsCount = auctions.filter((a) => !a.finalized && Number(a.endTime) > now).length;
 
-  // ──────────────────────────────────────────────────────────
-  //  Main render
-  // ──────────────────────────────────────────────────────────
   return (
     <div className={`app ${darkMode ? "dark" : "light"}`}>
 
-      {/* ── Navbar ───────────────────────────────────────── */}
       <nav className="navbar">
         <div className="nav-brand">
           <span className="brand-name">YodaMart</span>
@@ -1503,7 +1414,6 @@ export default function App() {
         </div>
       </nav>
 
-      {/* ── Wrong network warning ───────────────────────── */}
       {isWrongNetwork && (
         <div className="network-warning">
           <span>Wrong network — this app runs on Sepolia.</span>
@@ -1511,14 +1421,12 @@ export default function App() {
         </div>
       )}
 
-      {/* ── HOME page ────────────────────────────────────── */}
       {activePage === "home" && (
         <main className="page-content">
           {HomeTab()}
         </main>
       )}
 
-      {/* ── HISTORY page ─────────────────────────────────── */}
       {activePage === "history" && (
         <main className="page-content">
           <div className="page-header">
@@ -1537,10 +1445,8 @@ export default function App() {
         </main>
       )}
 
-      {/* ── MARKETPLACE page ─────────────────────────────── */}
       {activePage === "market" && (
         <>
-          {/* ── Market stat strip ────────────────────────── */}
           <div className="market-strip">
             <div className="market-strip-stats">
               <div className="stat">
@@ -1572,7 +1478,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── Marketplace / Deploy Panel ───────────────── */}
           <section className="products-section">
             {!marketAddress ? (
               DeployPanel()
@@ -1629,7 +1534,6 @@ export default function App() {
         </>
       )}
 
-      {/* ── Footer ───────────────────────────────────────── */}
       <footer className="footer">
         <div className="footer-brand">
           YodaMart — Decentralized Lettuce Marketplace
